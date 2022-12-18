@@ -1,0 +1,153 @@
+#!/bin/ksh
+
+
+#
+#
+# Copyright (c) 2022 Piotr Trzpil  p.trzpil@protonmail.com
+#
+# Permission to use, copy, modify, and distribute 
+# this software for any purpose with or without fee
+# is hereby granted, provided that the above copyright
+# notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR
+# DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+# INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+# FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+# DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+# OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+# CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+# OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+# OF THIS SOFTWARE.
+#
+#
+
+
+
+if (( "$#" != 2 ))
+then
+
+    printf "Program expects two arguments\n" 1>&2
+    printf "GPS_optimilized directory, GPS_uniq directory \n" 1>&2
+    exit
+fi
+
+gpsopt_dir="$1"
+gpsuniq_dir="$2"
+
+if ! test -d "$gpsopt_dir"
+then
+
+	printf "%s not directory or does not exist\n" "$gpsopt_dir" 1>&2 
+	exit
+
+fi
+
+if ! test -d "$gpsuniq_dir"
+then
+
+	printf "%s not directory or does not exist\n" "$gpsopt_dir" 1>&2 
+	exit
+
+fi
+
+tempfile_1="$( mktemp )"
+
+find "$gpsopt_dir"'/'* -type f -iname '*.log' > "$tempfile_1" 2>'/dev/null'
+
+
+while IFS= read -r logfile
+do
+ 
+    uniqfile="$gpsuniq_dir"'/'"${logfile#*/}"
+    base_uniqfile="$uniqfile"
+    printf "%s\n" "$uniqfile"
+
+    #if exists - simply get rid of it
+    # unless you can't , loop next file
+    if ! rm -f "$uniqfile"
+    then
+	    continue
+    fi
+
+    old_line=''
+    continuation=1
+    count_slice=2
+    found_point=0
+    while IFS= read -r line
+    do
+
+	if [[ "$line" == *RMC,* ]]
+	then
+
+	    # detect first entring to loop
+	    if test -z "$old_line"
+	    then
+
+		    old_line="$line"
+		    continue
+		    #earlier had simply read -r line
+		    
+	    fi
+
+	    # if they are the same just keep in old newline and reread
+	    if [[ "$line" == "$old_line" ]]
+	    then
+		    old_line="$line"
+		    continue
+	    fi
+
+	    { ./readNMEA -p "$line"; ./readNMEA -p "$old_line"; } | tr -s "[:space:]" "\n" | awk NF \
+	    | ./fixedxargs './mapgps'
+	    keep_return="$?"
+	    if (( keep_return == 2 ))
+	    then
+		    
+		    # add point that connects new path with old one
+		    # else it will cause stuff to look like there are some missing
+		    # points when two paths cross.
+		    if (( "$found_point" == 1 ))
+		    then
+			    found_point=0
+	    		    printf "%s\n" "$line" >> "$uniqfile"
+		    fi
+
+		    continuation=0
+	            old_line="$line" 
+		    continue
+
+	    elif (( keep_return == 1 ))
+	    then
+		    printf "./mapgps failure\n" >2
+		    exit
+	    fi
+	
+            if (( ! continuation ))
+	    then
+
+		continuation=1
+	    	if test -e "$uniqfile"
+	    	then
+
+	    		uniqfile="${base_uniqfile%.*}"'_'"$count_slice"'.'"${base_uniqfile##*.}"
+            		printf "%s\n" "$uniqfile"
+ 	    		count_slice=$(( count_slice + 1 ))
+		fi
+
+	    fi	    
+
+	    printf "%s\n" "$old_line" >> "$uniqfile"
+	    old_line="$line" 
+
+	fi
+
+    done < "$logfile"
+
+    #remove *checked file
+    rm "$logfile"
+
+done < "$tempfile_1"
+
+rm -rf "$tempfile_1" 
+

@@ -1,0 +1,133 @@
+#!/bin/ksh
+
+
+#
+#
+# Copyright (c) 2022 Piotr Trzpil  p.trzpil@protonmail.com
+#
+# Permission to use, copy, modify, and distribute 
+# this software for any purpose with or without fee
+# is hereby granted, provided that the above copyright
+# notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR
+# DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+# INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+# FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+# DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+# OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+# CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+# OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+# OF THIS SOFTWARE.
+#
+#
+
+
+
+if (( "$#" != 3 ))
+then
+
+    printf "Program expects thee arguments\n" 1>&2
+    printf "GPS checked directory, GPS, optimilized directoryd\n" 1>&2
+    printf "Meters below which entry line is removed\n" 1>&2
+    exit
+fi
+
+gpschk_dir="$1"
+gpsopt_dir="$2"
+min_dist="$3"
+
+if ! test -d "$gpschk_dir"
+then
+
+	printf "%s not directory or does not exist\n" "$gpschk_dir" 1>&2 
+	exit
+
+fi
+if ! test -d "$gpsopt_dir"
+then
+
+	printf "%s not directory or does not exist\n" "$gpsopt_dir" 1>&2 
+	exit
+
+fi
+
+case $min_dist in '' | *[!0123456789]*)
+
+     printf "%s\n" "$0: $min_dist: invalid digit" >&2; exit;;
+
+esac
+
+tempfile_1="$( mktemp )"
+
+find "$gpschk_dir"'/'* -type f -iname '*.log' > "$tempfile_1" 2>'/dev/null'
+
+while IFS= read -r logfile
+do
+ 
+    wc -l "$logfile"
+
+    last=''
+
+    saveline=''
+ 
+    optfile="$gpsopt_dir"'/'"${logfile#*/}"
+
+    #if exists - simply get rid of it
+    # unless you can't , loop next file
+    if ! rm -f "$optfile"
+    then
+	    continue
+    fi
+
+    while IFS= read -r line
+    do
+
+        if [[ "$line" == *RMC,*  ]]
+	then
+	
+            saveline="$line"
+
+	    #check if first entry
+	    if ! test -n "$last"
+	    then
+	        
+		printf "%s\n" "$line" >> "$optfile"
+		last="$line"
+		continue
+
+	    fi
+
+	    dist="$( ./readNMEA -c "$last" "$line" )"
+	    dist=${dist%.*}
+
+
+	    if (( "$dist" < "$min_dist" ))
+	    then
+		    
+		    continue
+
+	    fi
+
+	    printf "%s\n" "$last" >> "$optfile"
+	    last="$line"
+	    continue
+
+	fi
+	
+	#everything else just copy
+	printf "%s\n" "$line" >> "$optfile"
+
+    done < "$logfile"
+
+    printf "%s\n" "$saveline" >> "$optfile"
+    wc -l "$optfile"
+
+    #remove *inpot* file
+    rm "$logfile"
+
+done < "$tempfile_1"
+
+rm -rf "$tempfile_1" 
+

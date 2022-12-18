@@ -1,0 +1,106 @@
+#!/bin/ksh
+
+
+#
+#
+# Copyright (c) 2022 Piotr Trzpil  p.trzpil@protonmail.com
+#
+# Permission to use, copy, modify, and distribute 
+# this software for any purpose with or without fee
+# is hereby granted, provided that the above copyright
+# notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR
+# DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+# INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+# FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+# DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+# OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+# CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+# OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+# OF THIS SOFTWARE.
+#
+#
+
+
+
+
+if (( "$#" != 2  ))
+then
+	
+	printf "Program expects two arguments\n" 1>&2 
+	printf "GPS raw path and GPS chk path\n" 1>&2 
+	exit
+
+fi
+
+gpsraw_dir="$1"
+gpschk_dir="$2"
+
+if ! test -d "$gpsraw_dir"
+then
+
+	printf "%s not directory or does not exist\n" "$gpsraw_dir" 1>&2 
+	exit
+
+fi
+if ! test -d "$gpschk_dir"
+then
+
+	printf "%s not directory or does not exist\n" "$gpschk_dir" 1>&2 
+	exit
+
+fi
+
+
+tempfile="$( mktemp )"
+
+find "$gpsraw_dir"'/'* -type f -iname '*.log' > "$tempfile" 2>'/dev/null'
+
+while IFS= read -r logfile
+do
+ 
+    chkfile="$gpschk_dir"'/'"${logfile#*/}"
+    printf "Checking: %s                                   \r" "$logfile"
+
+    #if exists - simply get rid of it
+    # unless you can't , loop next file
+    if ! rm -f "$chkfile"
+    then
+	    continue
+    fi
+
+    while IFS= read -r line
+    do
+
+        if [[ "$line" == \$*  ]]
+	then
+
+		#get rid of anything that is not RMC
+		if [[ "$line" != *RMC,* ]]
+		then
+			continue
+		fi
+		./readNMEA -t "$line"
+		if ((  "$?" == 2  ))
+		then
+			printf "\nIn file %s, broken line: %s\n" "$logfile" "$line" 1>&2
+			continue
+		fi
+
+	fi
+	printf "%s\n" "$line" >> "$chkfile"
+	
+    done < "$logfile"
+
+    #after check get rid of raw file
+    rm "$logfile"
+
+done < "$tempfile"
+
+printf "\n\nFinished checking nmea lines!\n"
+printf "See chklog for list of broken entries\n"
+
+rm -f "$tempfile"
+

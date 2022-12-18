@@ -1,0 +1,47 @@
+INSTALLATION
+For install you need to download smallsoft+ignotalib
+Install script does that for you so all you do is run:
+
+sh ./install.sh
+
+You will be downloading stuff from git ( smallsoft + ignotalib ).
+We need readNMEA program.
+
+After that run program so it will set up directories it uses.
+
+./gpsopt
+
+USING THE PROGRAM
+
+Program only optimilizes RMC nmea lines. So you need to
+convert your GPS files to RMC nmea. Using for example gpsbabel.
+You put your files to GPS_raw. 
+
+Now for optimilization simply run 
+
+./gpsopt
+
+Every line that is NOT RMC gets removed.
+Program checks if the line is correct. If check sum is wrong,
+line gets removed.
+Than it removes positions that are simply close while reading the the
+gps file.
+After that gpstree directory is created and positions are being saved.
+If later position is close to existing position - it gets removed.
+So NEVER remove the gpstree dir since it will start passing points that
+should not appear - they would be in area of points allready showed up.
+
+The final optimilized points will appear in GPS_uniq dir
+Other dirs should be empty when program finishes.
+
+If you put files from GPS_uniq to GPS_raw and run program.
+Everythign will be removed because those positions are already saved
+in gpstree and will be treated as repeated.
+
+I advice to backup your data and experiment with program
+to understand how it works.
+
+Goodluck.
+
+
+
